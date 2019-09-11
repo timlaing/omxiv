@@ -2,6 +2,7 @@ OBJS=omxiv.o omx_image.o omx_render.o soft_image.o ./libnsbmp/libnsbmp.o ./libns
 BIN=omxiv.bin
 LDFLAGS+=-lilclient -ljpeg -lpng -lrt -ldl -Wl,--gc-sections -s
 INCLUDES+=-I./libnsbmp -I./libnsgif -I./libs/ilclient
+INSTALL ?= /usr/local/bin
 
 BUILDVERSION=\"$(shell git rev-parse --short=10 HEAD 2>/dev/null;test $$? -gt 0 && echo UNKNOWN)\"
 LIBCURL_NAME=\"$(shell ldconfig -p | grep libcurl | head -n 1 | awk '{print $$1;}' 2>/dev/null)\"
@@ -26,10 +27,10 @@ ilclient:
 	make -C libs/ilclient
 	
 install:
-	install $(BIN) /usr/bin/omxiv
+	install -D $(BIN) $(INSTALL)/omxiv
 	
 uninstall:
-	rm -f /usr/bin/omxiv
+	rm -f $(INSTALL)/omxiv
 
 debug: CFLAGS:=$(filter-out -O3,$(CFLAGS)) -Og
 debug: LDFLAGS:=$(filter-out -s,$(LDFLAGS))

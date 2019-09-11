@@ -45,6 +45,7 @@ OPTIONS:
         --ignore-exif            Ignore exif orientation
     -f  --file-list              Read a list of images from a text file
     -r  --randomize              Randomize the list of images
+        --once                   Only show the image(s) once, exit after the last
 
 KEY CONFIGURATION:
 
