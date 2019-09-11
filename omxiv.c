@@ -44,6 +44,8 @@ static const struct option longOpts[] = {
 	{"no-keys", no_argument, 0, 'k'},
 	{"soft", no_argument, 0, 's'},
 	{"ignore-exif", no_argument, 0, 0x103},
+	{"input-filename", required_argument, 0, 'f'},
+	{"randomize", no_argument, 0, 'r'},
 	{0, 0, 0, 0}
 };
 
@@ -102,29 +104,30 @@ static int imageFilter(const struct dirent *entry){
 		return 0;
 }
 
-static int getImageFilesInDir(char ***list, const char* path){
+static int getImageFilesInDir(char ***list, const char* path, const int offset){
 	struct dirent **namelist;
 	int imageNum;
+	printf("Scanning folder %s\n", path);
 	imageNum = scandir(path, &namelist, imageFilter, alphasort);
 	if (imageNum < 0)
 		return imageNum;
 	else {
-		*list=malloc(sizeof(char*) *imageNum);
+		*list=realloc(*list, sizeof(char*)*(imageNum+offset));
 		int i;
 		for(i=0; i<imageNum; i++) {
 			if(strcmp(path, ".") == 0 || strcmp(path, "./") == 0){
-				(*list)[i]= malloc(strlen(namelist[i]->d_name)+1);
-				strcpy((*list)[i], namelist[i]->d_name);
+				(*list)[offset+i]= malloc(strlen(namelist[i]->d_name)+1);
+				strcpy((*list)[offset+i], namelist[i]->d_name);
 			}else{
 				if(strrchr(path, '/')- path != strlen(path)-1){
-					(*list)[i]= malloc(strlen(path)+strlen(namelist[i]->d_name)+2);
-					strcpy((*list)[i],path);
-					(*list)[i][strlen(path)]='/';
-					strcpy((*list)[i]+strlen(path)+1,namelist[i]->d_name);
+					(*list)[offset+i]= malloc(strlen(path)+strlen(namelist[i]->d_name)+2);
+					strcpy((*list)[offset+i],path);
+					(*list)[offset+i][strlen(path)]='/';
+					strcpy((*list)[offset+i]+strlen(path)+1,namelist[i]->d_name);
 				}else{
-					(*list)[i]= malloc(strlen(path)+strlen(namelist[i]->d_name)+1);
-					strcpy((*list)[i],path);
-					strcpy((*list)[i]+strlen(path),namelist[i]->d_name);
+					(*list)[offset+i]= malloc(strlen(path)+strlen(namelist[i]->d_name)+1);
+					strcpy((*list)[offset+i],path);
+					strcpy((*list)[offset+i]+strlen(path),namelist[i]->d_name);
 				}
 			}
 			free(namelist[i]);
@@ -362,14 +365,66 @@ static int isBackgroundProc() {
 }
 
 static void printVersion(){
-	printf("Version: %s\n", VERSION);
+	printf("Version: %s-custom\n", VERSION);
 	printf("Build date: %s\n", __DATE__);
+}
+
+static int readImageList(char ***files, const char *listfile)
+{
+	char filename[256];
+	FILE *list;
+	char *cFile;
+	struct stat liststat;
+	int fileCount=0;
+
+	list = fopen(listfile,"r");
+	if (NULL == list) {
+	fprintf(stderr,"open %s: %s\n",listfile,strerror(errno));
+		return -1;
+	}
+
+	fstat(fileno(list), &liststat);
+	while (NULL != fgets(filename,sizeof(filename)-1,list)) {
+		size_t off = strcspn(filename,"\r\n");
+		if (off)
+			filename[off] = 0;
+		else
+			continue;
+
+		cFile=strdup(filename);
+		if (cFile==NULL)
+			continue;
+
+		*files = realloc(*files, sizeof(char*)*fileCount + sizeof(char*));
+		if (*files!=NULL) {
+			(*files)[fileCount++] = cFile;
+		}
+	}
+
+	fclose(list);
+	return fileCount;
+}
+
+// Implement the Fisher-Yates shuffle
+static void randomizeImages(char ***list, const int imageNum)
+{
+	int count, _random;
+	char *swap;
+	srand((unsigned)time(NULL));
+
+	for (count = imageNum-1; count > 0; count--) {
+		_random = rand()%(count + 1);
+		swap = (*list)[count];
+		(*list)[count] = (*list)[_random];
+		(*list)[_random] = swap;
+	}
 }
 
 int main(int argc, char *argv[]){
 	int ret = 1;
 	long timeout = 0;
-
+	char *inputFileName = NULL;
+	int randomize = 0;
 	render.transition.type = NONE;
 	render.transition.durationMs = 400;
 
@@ -377,7 +432,7 @@ int main(int argc, char *argv[]){
 		keys=0;
 	
 	int opt;
-	while((opt = getopt_long(argc, argv, "hvt:bT:a:o:ml:d:iks", 
+	while((opt = getopt_long(argc, argv, "hvt:bT:a:o:ml:d:iksf:r",
 			longOpts, NULL)) != -1){
 		
 		switch(opt){
@@ -435,35 +490,47 @@ int main(int argc, char *argv[]){
 				info = 1; break;
 			case 'k':
 				keys = 0; break;
+			case 'f':
+				inputFileName=strdup(optarg); break;
 			case 's':
 				soft = 1; break;
 			case 0x103:
 				exifOrient = 0; break;
+			case 'r':
+				randomize = 1; break;
 			default:
 				return EXIT_FAILURE;	
 		}
 	}
 
-	int imageNum;
-	char **files;
-	if(argc-optind <= 0){
-		imageNum=getImageFilesInDir(&files, "./");
-	}else if(isDir(argv[optind])){
-		imageNum=getImageFilesInDir(&files, argv[optind]);
-	}else{
-		imageNum = argc-optind;
+	int imageNum=0;
+	char **files=NULL;
+	if (inputFileName!=NULL) {
+		imageNum=readImageList(&files, inputFileName);
+	}
 
-		files=malloc(sizeof(char*) *imageNum);
+	if(argc-optind <= 0){
+		imageNum+=getImageFilesInDir(&files, "./", imageNum);
+	}else if(isDir(argv[optind])){
+		imageNum+=getImageFilesInDir(&files, argv[optind], imageNum);
+	}else{
+		files=realloc(files, sizeof(char*)*(imageNum+argc-optind));
 		int x;
-		for(x =0; optind+x<argc; x++){
-			files[x]=argv[optind+x];
+		for(x=0; optind+x<argc; x++){
+			files[imageNum+x]=argv[optind+x];
 		}
+
+		imageNum+=argc-optind;
 	}
 
 	if(imageNum<1){
 		fprintf(stderr, "No images to display\n");
 		return 1;
 	}
+
+	// Randomize the list of images
+	if (randomize)
+		randomizeImages(&files, imageNum);
 
 	bcm_host_init();
 
@@ -496,7 +563,8 @@ int main(int argc, char *argv[]){
 	unsigned long cTime;
 	IMAGE image = {0};
 	ANIM_IMAGE anim = {0};
-	
+
+
 	ret=decodeImage(files[0], &image, &anim);
 
 	if(ret==0){
@@ -507,7 +575,7 @@ int main(int argc, char *argv[]){
 			end = 1;
 	}else{
 		if(ret == SOFT_IMAGE_ERROR_FILE_OPEN){
-			fprintf(stderr, "Error file does not exist or is corrupted.\n");
+			fprintf(stderr, "Error: file does not exist or is corrupted.\n");
 		}else if(ret!= 0x100){
 			fprintf(stderr, "decoder returned 0x%x\n", ret);
 		}
@@ -527,11 +595,16 @@ int main(int argc, char *argv[]){
 		}else{
 			usleep(20000);
 		}
-		if(timeout != 0 && imageNum > 1 && !paused){
+
+		if(timeout>0 && !paused){
+
 			cTime = getCurrentTimeMs();
+
 			if( (cTime-lShowTime) > timeout){
+				// Exit if this is the last image
 				if(imageNum <= ++i)
-					i=0;
+					break;
+
 				stopAnimation(pCurRender);
 				ret=decodeImage(files[i], &image, &anim);
 				if(ret==0){
@@ -604,7 +677,7 @@ int main(int argc, char *argv[]){
 			else
 				printf("Continue\n");
 		}
-	}
+	} // end while.
 
 	if(ret == 0){
 		ret = stopOmxImageRender(pCurRender);
