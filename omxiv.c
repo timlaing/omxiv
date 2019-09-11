@@ -46,6 +46,7 @@ static const struct option longOpts[] = {
 	{"ignore-exif", no_argument, 0, 0x103},
 	{"input-filename", required_argument, 0, 'f'},
 	{"randomize", no_argument, 0, 'r'},
+	{"once", no_argument, 0, 0x104},
 	{0, 0, 0, 0}
 };
 
@@ -365,7 +366,7 @@ static int isBackgroundProc() {
 }
 
 static void printVersion(){
-	printf("Version: %s-custom\n", VERSION);
+	printf("Version: %s\n", VERSION);
 	printf("Build date: %s\n", __DATE__);
 }
 
@@ -425,6 +426,7 @@ int main(int argc, char *argv[]){
 	long timeout = 0;
 	char *inputFileName = NULL;
 	int randomize = 0;
+	int repeat = 1;
 	render.transition.type = NONE;
 	render.transition.durationMs = 400;
 
@@ -498,10 +500,13 @@ int main(int argc, char *argv[]){
 				exifOrient = 0; break;
 			case 'r':
 				randomize = 1; break;
+			case 0x104:
+				repeat = 0; break;
 			default:
 				return EXIT_FAILURE;	
 		}
 	}
+
 
 	int imageNum=0;
 	char **files=NULL;
@@ -509,7 +514,7 @@ int main(int argc, char *argv[]){
 		imageNum=readImageList(&files, inputFileName);
 	}
 
-	if(argc-optind <= 0){
+	if(argc-optind <= 0 && imageNum<=0 ){
 		imageNum+=getImageFilesInDir(&files, "./", imageNum);
 	}else if(isDir(argv[optind])){
 		imageNum+=getImageFilesInDir(&files, argv[optind], imageNum);
@@ -601,10 +606,15 @@ int main(int argc, char *argv[]){
 			cTime = getCurrentTimeMs();
 
 			if( (cTime-lShowTime) > timeout){
-				// Exit if this is the last image
-				if(imageNum <= ++i)
-					break;
-
+				// Exit if this is the last image and looping is disabled
+				if(imageNum <= ++i) { 
+					if(repeat) {
+						i=0;
+					} else {
+						break;
+					}
+				}
+				
 				stopAnimation(pCurRender);
 				ret=decodeImage(files[i], &image, &anim);
 				if(ret==0){
