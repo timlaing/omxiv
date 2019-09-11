@@ -43,6 +43,8 @@ OPTIONS:
     -k  --no-keys                Disable keyboard input
     -s  --soft                   Force software decoding
         --ignore-exif            Ignore exif orientation
+    -f  --file-list              Read a list of images from a text file
+    -r  --randomize              Randomize the list of images
 
 KEY CONFIGURATION:
 
