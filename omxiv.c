@@ -44,7 +44,7 @@ static const struct option longOpts[] = {
 	{"no-keys", no_argument, 0, 'k'},
 	{"soft", no_argument, 0, 's'},
 	{"ignore-exif", no_argument, 0, 0x103},
-	{"input-filename", required_argument, 0, 'f'},
+	{"file-list", required_argument, 0, 'f'},
 	{"randomize", no_argument, 0, 'r'},
 	{"once", no_argument, 0, 0x104},
 	{0, 0, 0, 0}
